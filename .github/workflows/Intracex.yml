@@ -1,0 +1,62 @@
+name: IntraceX Auto Renew
+
+on:
+  schedule:
+    # 每周一和周四 23:00 UTC+8 运行 (等于 15:00 UTC)
+    - cron: '0 15 * * 1,4'
+  
+  # 允许手动触发
+  workflow_dispatch:
+
+jobs:
+  auto-renew:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      
+    - name: 设置 Python 环境
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: 安装依赖
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        playwright install chromium
+        playwright install-deps
+        
+    - name: 运行自动续期脚本
+      env:
+        INTRACEX_EMAIL: ${{ secrets.INTRACEX_EMAIL }}
+        INTRACEX_PASSWORD: ${{ secrets.INTRACEX_PASSWORD }}
+        TG: ${{ secrets.TG }}
+        USE_HEADLESS: 'true'
+        GITHUB_ACTIONS: 'true'
+      run: |
+        python main.py
+        
+    - name: 上传截图
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: screenshots-${{ github.run_number }}
+        path: '*.png'
+        retention-days: 7
+        
+    - name: 提交 README 更新
+      if: always()
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add README.md
+        git diff --quiet && git diff --staged --quiet || git commit -m "🤖 自动更新: $(date '+%Y-%m-%d %H:%M:%S')"
+        
+    - name: 推送更改
+      if: always()
+      uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        branch: ${{ github.ref }}
